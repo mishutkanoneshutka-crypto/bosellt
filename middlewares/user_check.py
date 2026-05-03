@@ -5,7 +5,7 @@ from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
-from database.base import SessionLocal
+import database.base as db
 from database.crud import get_or_create_user
 
 
