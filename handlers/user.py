@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
 
 from config import Config
-from database.base import SessionLocal
+import database.base as db
 from database.crud import (
     add_to_cart,
     apply_promo_code,
@@ -67,7 +67,7 @@ async def cmd_start(message: Message, command: CommandObject, config: Config):
     if command.args and command.args.startswith('ref_'):
         ref_raw = command.args.replace('ref_', '', 1)
         if ref_raw.isdigit():
-            async with SessionLocal() as session:
+            async with db.SessionLocal() as session:
                 await set_referrer(session, message.from_user.id, int(ref_raw))
 
     referral_link = f'https://t.me/{(await message.bot.me()).username}?start=ref_{message.from_user.id}'
@@ -93,7 +93,7 @@ async def main_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'catalog')
 async def show_catalog(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         categories = await get_categories(session)
     await callback.message.edit_text('Каталог товаров', reply_markup=catalog_menu_kb(bool(categories)))
     await callback.answer()
@@ -101,7 +101,7 @@ async def show_catalog(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'catalog:categories')
 async def show_categories(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         categories = await get_categories(session)
     if not categories:
         await callback.answer('Категорий пока нет.', show_alert=True)
@@ -117,7 +117,7 @@ async def show_products_page(callback: CallbackQuery):
     page = 1
     if callback.data.startswith('catalog_page:'):
         page = int(callback.data.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         products = await get_active_products(session)
     if not products:
         await callback.message.edit_text('Сейчас нет доступных товаров.', reply_markup=back_to_menu_kb())
@@ -132,7 +132,7 @@ async def show_products_page(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('catalog:category:'))
 async def show_category_products(callback: CallbackQuery):
     category_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         products = await get_active_products(session, category_id=category_id)
     if not products:
         await callback.message.edit_text('В этой категории пока нет товаров.', reply_markup=back_to_menu_kb())
@@ -147,7 +147,7 @@ async def show_category_products(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('category_page:'))
 async def show_category_products_page(callback: CallbackQuery):
     _, category_id, page = callback.data.split(':')
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         products = await get_active_products(session, category_id=int(category_id))
     if not products:
         await callback.answer('Товаров нет.', show_alert=True)
@@ -174,7 +174,7 @@ async def search_products_process(message: Message, state: FSMContext):
     if len(query) < 2:
         await message.answer('Введите хотя бы 2 символа.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         products = await get_active_products(session, search=query)
     await state.clear()
     if not products:
@@ -191,7 +191,7 @@ async def search_products_process(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith('product:'))
 async def show_product(callback: CallbackQuery):
     product_id = int(callback.data.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         product = await get_product(session, product_id)
         stock = await get_product_stock(session, product_id)
     if not product:
@@ -215,7 +215,7 @@ async def show_product(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('buy:'))
 async def buy_product_handler(callback: CallbackQuery):
     product_id = int(callback.data.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         success, text, order = await buy_product(session, callback.from_user.id, product_id)
         if not success:
             await callback.answer(text, show_alert=True)
@@ -231,13 +231,13 @@ async def buy_product_handler(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('cart_add:'))
 async def add_product_to_cart(callback: CallbackQuery):
     product_id = int(callback.data.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await add_to_cart(session, callback.from_user.id, product_id)
     await callback.answer('Добавлено в корзину.' if result else 'Не удалось добавить товар.', show_alert=True)
 
 
 async def _render_cart_text(user_id: int) -> tuple[str, list[int]]:
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         cart_items = await get_cart_items(session, user_id)
         products = {product.id: product for product in await get_active_products(session)}
     if not cart_items:
@@ -268,7 +268,7 @@ async def cart_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('cart:increase:'))
 async def cart_increase(callback: CallbackQuery):
     cart_item_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         items = await get_cart_items(session, callback.from_user.id)
         target = next((item for item in items if item.id == cart_item_id), None)
         if not target:
@@ -284,7 +284,7 @@ async def cart_increase(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('cart:decrease:'))
 async def cart_decrease(callback: CallbackQuery):
     cart_item_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         items = await get_cart_items(session, callback.from_user.id)
         target = next((item for item in items if item.id == cart_item_id), None)
         if not target:
@@ -300,7 +300,7 @@ async def cart_decrease(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('cart:remove:'))
 async def cart_remove(callback: CallbackQuery):
     cart_item_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await remove_cart_item(session, cart_item_id, callback.from_user.id)
     text, visible_ids = await _render_cart_text(callback.from_user.id)
     await callback.message.answer('🗑 Товар удален из корзины.' if result else 'Позиция не найдена.')
@@ -310,7 +310,7 @@ async def cart_remove(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'cart:clear')
 async def cart_clear(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         await clear_cart(session, callback.from_user.id)
     await callback.message.edit_text('Корзина очищена.', reply_markup=back_to_menu_kb())
     await callback.answer()
@@ -318,7 +318,7 @@ async def cart_clear(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'cart:buy_all')
 async def cart_buy_all(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         success, text, orders = await buy_cart(session, callback.from_user.id)
     if not success:
         await callback.answer(text, show_alert=True)
@@ -332,7 +332,7 @@ async def cart_buy_all(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'my_orders')
 async def my_orders(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         orders = await get_user_orders(session, callback.from_user.id)
     if not orders:
         await callback.message.edit_text('У вас пока нет покупок.', reply_markup=back_to_menu_kb())
@@ -353,7 +353,7 @@ async def my_orders(callback: CallbackQuery):
 @router.message(F.text.regexp(r'^/order_(\d+)$'))
 async def show_order_by_command(message: Message):
     order_id = int(message.text.split('_')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         order = await get_order(session, order_id, user_id=message.from_user.id)
     if not order:
         await message.answer('Заказ не найден.')
@@ -367,7 +367,7 @@ async def show_order_by_command(message: Message):
 @router.callback_query(F.data.startswith('order:'))
 async def show_order_detail(callback: CallbackQuery):
     order_id = int(callback.data.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         order = await get_order(session, order_id, user_id=callback.from_user.id)
     if not order:
         await callback.answer('Заказ не найден.', show_alert=True)
@@ -381,7 +381,7 @@ async def show_order_detail(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'my_balance')
 async def my_balance(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         user = await get_user(session, callback.from_user.id)
     balance = format_price(user.balance if user else 0)
     await callback.message.edit_text(f'Ваш баланс: <b>{balance} ₽</b>', reply_markup=back_to_menu_kb())
@@ -390,7 +390,7 @@ async def my_balance(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'my_payments')
 async def my_payments(callback: CallbackQuery):
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         payments = await get_user_payments(session, callback.from_user.id)
     if not payments:
         await callback.message.edit_text('У вас пока нет платежей.', reply_markup=back_to_menu_kb())
@@ -434,7 +434,7 @@ async def support_message(message: Message, state: FSMContext, config: Config, b
     if len(text) < 5:
         await message.answer('Опишите проблему подробнее.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         ticket = await create_support_ticket(session, message.from_user.id, text)
     for admin_id in config.admin_ids:
         try:
@@ -460,7 +460,7 @@ async def promo_apply(message: Message, state: FSMContext):
     if not code:
         await message.answer('Введите промокод текстом.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         success, text, amount = await apply_promo_code(session, message.from_user.id, code)
     await state.clear()
     if success:
@@ -492,7 +492,7 @@ async def process_topup_amount(message: Message, state: FSMContext, config: Conf
         await message.answer('Сначала выберите способ оплаты кнопкой ниже.', reply_markup=topup_methods_kb(crypto.enabled, bool(config.provider_token)))
         return
 
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         payment = await create_payment(session, message.from_user.id, amount, method=method)
 
         if method == 'crypto':
@@ -557,7 +557,7 @@ async def _check_crypto_payment(message: Message, invoice_id: str, crypto: Crypt
         await message.answer('Инвойс не найден.')
         return
 
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         payment = await get_payment_by_external_id(session, invoice_id)
         if not payment:
             await message.answer('Платеж не найден в базе.')
@@ -580,6 +580,6 @@ async def successful_payment(message: Message):
     if not payload.startswith('tgpay:'):
         return
     payment_id = int(payload.split(':')[1])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         await mark_payment_paid(session, payment_id)
     await message.answer('✅ Баланс успешно пополнен через Telegram Payments.', reply_markup=main_menu_kb())
