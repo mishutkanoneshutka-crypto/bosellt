@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from config import Config
-from database.base import SessionLocal
+import database.base as db
 from database.crud import (
     add_product_items,
     change_user_balance,
@@ -89,7 +89,7 @@ async def admin_callbacks(callback: CallbackQuery, config: Config, state: FSMCon
     action = callback.data.split(':', 1)[1]
 
     if action == 'stats':
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             stats = await get_stats(session)
         text = (
             '📊 Статистика\n\n'
@@ -104,7 +104,7 @@ async def admin_callbacks(callback: CallbackQuery, config: Config, state: FSMCon
         await callback.message.edit_text('Введите название категории:', reply_markup=cancel_kb())
     elif action == 'add_product':
         await state.set_state(AdminAddProductStates.waiting_for_category_id)
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             categories = await get_categories(session)
         if categories:
             category_lines = '\n'.join(f'{category.id} — {category.title}' for category in categories)
@@ -115,7 +115,7 @@ async def admin_callbacks(callback: CallbackQuery, config: Config, state: FSMCon
         else:
             await callback.message.edit_text('Категорий пока нет. Введите 0 для товара без категории.', reply_markup=cancel_kb())
     elif action == 'list_products':
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             products = await get_all_products(session)
         if not products:
             await callback.message.edit_text('Товаров пока нет.', reply_markup=back_to_menu_kb())
@@ -159,14 +159,14 @@ async def admin_callbacks(callback: CallbackQuery, config: Config, state: FSMCon
         await callback.message.edit_text('Введите ID тикета:', reply_markup=cancel_kb())
         await state.set_state(AdminTicketReplyStates.waiting_for_ticket_id)
     elif action == 'tickets_open':
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             tickets = await get_support_tickets(session, 'open')
         if not tickets:
             await callback.message.edit_text('Нет открытых тикетов.', reply_markup=admin_menu_kb())
         else:
             await callback.message.edit_text('Открытые тикеты:', reply_markup=ticket_list_kb([(item.id, item.status) for item in tickets[:30]]))
     elif action == 'tickets_closed':
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             tickets = await get_support_tickets(session, 'closed')
         if not tickets:
             await callback.message.edit_text('Нет закрытых тикетов.', reply_markup=admin_menu_kb())
@@ -188,7 +188,7 @@ async def admin_block_action(callback: CallbackQuery, config: Config):
         await callback.answer('Доступ запрещен.', show_alert=True)
         return
     user_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await set_user_blocked(session, user_id, True)
     await callback.answer('Пользователь заблокирован.' if result else 'Пользователь не найден.', show_alert=True)
 
@@ -199,7 +199,7 @@ async def admin_unblock_action(callback: CallbackQuery, config: Config):
         await callback.answer('Доступ запрещен.', show_alert=True)
         return
     user_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await set_user_blocked(session, user_id, False)
     await callback.answer('Пользователь разблокирован.' if result else 'Пользователь не найден.', show_alert=True)
 
@@ -212,7 +212,7 @@ async def admin_add_category_title(message: Message, state: FSMContext, config: 
     if not title:
         await message.answer('Название не может быть пустым.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         category = await create_category(session, title)
     await state.clear()
     await message.answer(f'✅ Категория создана. ID: {category.id}', reply_markup=admin_menu_kb())
@@ -262,7 +262,7 @@ async def admin_add_product_price(message: Message, state: FSMContext, config: C
         return
 
     data = await state.get_data()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         product = await create_product(
             session,
             data['title'],
@@ -292,7 +292,7 @@ async def admin_add_items_content(message: Message, state: FSMContext, config: C
         return
     data = await state.get_data()
     items = (message.text or '').splitlines()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         count = await add_product_items(session, data['product_id'], items)
     await state.clear()
     await message.answer(f'✅ Загружено позиций: {count}', reply_markup=admin_menu_kb())
@@ -306,7 +306,7 @@ async def admin_toggle_product(message: Message, state: FSMContext, config: Conf
         await message.answer('Введите числовой ID товара.')
         return
     product_id = int(message.text)
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         products = await get_all_products(session)
         target = next((item for item in products if item.id == product_id), None)
         if not target:
@@ -342,7 +342,7 @@ async def admin_upload_file_document(message: Message, state: FSMContext, config
     content = file_data.read().decode('utf-8', errors='ignore')
     items = [line.strip() for line in content.splitlines() if line.strip()]
     data = await state.get_data()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         count = await add_product_items(session, data['product_id'], items)
     await state.clear()
     await message.answer(f'✅ Из файла загружено позиций: {count}', reply_markup=admin_menu_kb())
@@ -389,7 +389,7 @@ async def admin_promo_max_uses(message: Message, state: FSMContext, config: Conf
         await message.answer('Число должно быть больше 0.')
         return
     data = await state.get_data()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         promo = await create_promo_code(session, data['code'], data['amount'], max_uses)
     await state.clear()
     await message.answer(
@@ -406,7 +406,7 @@ async def admin_broadcast(message: Message, state: FSMContext, config: Config, b
     if not text:
         await message.answer('Текст не должен быть пустым.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         user_ids = await get_all_user_ids(session)
     sent = 0
     failed = 0
@@ -428,7 +428,7 @@ async def admin_export_csv(message: Message, state: FSMContext, config: Config):
     output = io.StringIO()
     writer = csv.writer(output)
 
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         if export_type == 'users':
             users = await get_all_users(session)
             writer.writerow(['id', 'username', 'full_name', 'balance', 'is_blocked', 'referred_by', 'created_at'])
@@ -491,7 +491,7 @@ async def admin_edit_product_value(message: Message, state: FSMContext, config: 
         value = Decimal((message.text or '').replace(',', '.'))
     elif field == 'discount_percent':
         value = int(message.text)
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await update_product_field(session, data['product_id'], field, value)
     await state.clear()
     await message.answer('✅ Товар обновлен.' if result else 'Не удалось обновить товар.', reply_markup=admin_menu_kb())
@@ -504,7 +504,7 @@ async def admin_clear_stock(message: Message, state: FSMContext, config: Config)
     if not (message.text or '').isdigit():
         await message.answer('Введите числовой ID товара.')
         return
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         count = await clear_unsold_items(session, int(message.text))
     await state.clear()
     await message.answer(f'✅ Удалено непроданных позиций: {count}', reply_markup=admin_menu_kb())
@@ -516,7 +516,7 @@ async def admin_ticket_view(callback: CallbackQuery, config: Config):
         await callback.answer('Доступ запрещен.', show_alert=True)
         return
     ticket_id = int(callback.data.split(':')[2])
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         ticket = await get_support_ticket(session, ticket_id)
     if not ticket:
         await callback.answer('Тикет не найден.', show_alert=True)
@@ -561,7 +561,7 @@ async def admin_ticket_reply_text(message: Message, state: FSMContext, config: C
     if not is_admin(message.from_user.id, config):
         return
     data = await state.get_data()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         ticket = await reply_support_ticket(session, data['ticket_id'], message.text or '')
     await state.clear()
     if not ticket:
@@ -608,7 +608,7 @@ async def admin_balance_amount(message: Message, state: FSMContext, config: Conf
         await message.answer('Введите корректную сумму.')
         return
     data = await state.get_data()
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         result = await change_user_balance(session, data['user_id'], amount)
     await state.clear()
     await message.answer('✅ Баланс изменен.' if result else 'Пользователь не найден.', reply_markup=admin_menu_kb())
