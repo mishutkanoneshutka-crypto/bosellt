@@ -21,7 +21,7 @@ class UserContextMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         full_name = ' '.join(part for part in [user.first_name, user.last_name] if part)
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             db_user = await get_or_create_user(session, user.id, user.username, full_name)
 
         if db_user.is_blocked:
