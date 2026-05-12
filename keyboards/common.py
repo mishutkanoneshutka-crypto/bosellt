@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 def main_menu_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text='🛍 Каталог', callback_data='catalog')
-    builder.button(text='🔎 Поиск', callback_data='search_products')
+    builder.button(text='⭐ Отзывы', callback_data='reviews')
     builder.button(text='💳 Пополнить баланс', callback_data='topup_menu')
     builder.button(text='🎟 Активировать промокод', callback_data='promo_menu')
     builder.button(text='🛒 Корзина', callback_data='cart_menu')
